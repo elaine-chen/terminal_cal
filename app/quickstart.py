@@ -1,5 +1,5 @@
-from __future__ import print_function
 import os
+import signal
 import sys
 import time
 import datetime
@@ -55,7 +55,6 @@ def get_credentials():
 
 def event_poll(service):
     now = datetime.datetime.utcnow().isoformat() + 'Z' # 'Z' indicates UTC time
-    print('Getting the upcoming 10 events')
     events_result = service.events().list(
         calendarId='primary', timeMin=now, maxResults=10, singleEvents=True,
         orderBy='startTime').execute()
@@ -65,20 +64,24 @@ def event_poll(service):
 def handle_events(n, events):
     display = []
     for event in events:
-        print(event)
         start = event['start'].get('dateTime', event['start'].get('date'))
         event_str = '{}, {}'.format(start, event['summary'])
         notification  = notifier.Notification(
             event[u'id'],
             datetime.datetime.strptime(start[:-6], "%Y-%m-%dT%H:%M:%S"),
             datetime.timedelta(minutes=5),
-            event_str
+            "NOTIFY: " + event_str
         )
         if not n.has_notification(notification):
             n.add(notification)
         display.append(event_str)
-    sys.stdout.write('\n'.join(display))
-    sys.stdout.flush()
+    print('\n'.join(display))
+
+def create_handler(n):
+    def sighandler(signum, frame):
+        n.cancel_all()
+        sys.exit(1)
+    return sighandler
 
 def main():
     """Shows basic usage of the Google Calendar API.
@@ -90,6 +93,7 @@ def main():
     http = credentials.authorize(httplib2.Http())
     service = discovery.build('calendar', 'v3', http=http)
     n = notifier.Notifier()
+    signal.signal(signal.SIGINT, create_handler(n))
     while True:
         events = event_poll(service)
         handle_events(n, events)
