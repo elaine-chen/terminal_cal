@@ -4,6 +4,7 @@ import sys
 import time
 import datetime
 import httplib2
+import notifier
 
 from apiclient import discovery
 from oauth2client import client
@@ -61,17 +62,23 @@ def event_poll(service):
     events = events_result.get('items', [])
     return events
 
-def display_events(events):
+def handle_events(n, events):
     display = []
     for event in events:
+        print(event)
         start = event['start'].get('dateTime', event['start'].get('date'))
         event_str = '{}, {}'.format(start, event['summary'])
+        notification  = notifier.Notification(
+            event[u'id'],
+            datetime.datetime.strptime(start[:-6], "%Y-%m-%dT%H:%M:%S"),
+            datetime.timedelta(minutes=5),
+            event_str
+        )
+        if not n.has_notification(notification):
+            n.add(notification)
         display.append(event_str)
     sys.stdout.write('\n'.join(display))
     sys.stdout.flush()
-
-def notify(event, distance):
-    print("\a")
 
 def main():
     """Shows basic usage of the Google Calendar API.
@@ -82,9 +89,10 @@ def main():
     credentials = get_credentials()
     http = credentials.authorize(httplib2.Http())
     service = discovery.build('calendar', 'v3', http=http)
+    n = notifier.Notifier()
     while True:
         events = event_poll(service)
-        display_events(events)
+        handle_events(n, events)
         time.sleep(1*60)
 
 if __name__ == '__main__':
